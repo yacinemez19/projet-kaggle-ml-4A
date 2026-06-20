@@ -5,8 +5,12 @@ import pandas as pd
 import torch
 from torchvision.utils import make_grid
 
-from src.config import Config, TRAIN_CSV, TRAIN_MEAN, TRAIN_STD, get_device, set_seed
+from src.config import CHECKPOINTS_DIR, Config, TRAIN_CSV, TRAIN_MEAN, TRAIN_STD, get_device, set_seed
 from src.data import build_dataloaders, make_folds, stratified_split
+from src.models import build_lenet
+from src.engine import fit
+from src.utils import load_checkpoint, log_experiment, plot_history
+from src.submission import predict_test, write_submission
 
 # %% ----------------------------------
 cfg = Config()
@@ -63,3 +67,37 @@ print(f"labels      : {labels[:16].tolist()}")
 assert imgs.shape[1] == 1, "expected 1 channel (grayscale)"
 assert imgs.shape[2] == cfg.img_h and imgs.shape[3] == cfg.img_w, "unexpected spatial size"
 print("sanity check passed.")
+
+# %% ----------------------------------
+# Session 2 — LeNet baseline
+model = build_lenet(in_channels=cfg.in_channels, num_classes=cfg.num_classes).to(device)
+print(model)
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Parameters: {total_params:,}")
+
+# %% ----------------------------------
+# Train on fold 0
+train_loader, val_loader = build_dataloaders(fold=0, cfg=cfg, folds_df=folds_df)
+history = fit(model, train_loader, val_loader, cfg, device, run_name="lenet_fold0")
+
+# %% ----------------------------------
+# Training curves
+plot_history(history, save_path="lenet_curves.png")
+
+# %% ----------------------------------
+# Log baseline run
+log_experiment(
+    run_id="lenet_fold0",
+    base_champion="—",
+    levier="baseline LeNet (fold 0)",
+    cv_acc_mean=history["best_val_acc"],
+    cv_acc_std=0.0,
+    temps=history["elapsed"],
+    garde="oui",
+)
+
+# %% ----------------------------------
+# Generate Kaggle submission (best checkpoint)
+load_checkpoint(model, CHECKPOINTS_DIR / "lenet_fold0.pt", device)
+ids, preds = predict_test(model, cfg, device)
+write_submission(ids, preds, path="submission.csv")
