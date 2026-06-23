@@ -150,3 +150,44 @@ log_experiment(
 load_checkpoint(resnet, CHECKPOINTS_DIR / "resnet18_fold0.pt", device)
 ids, preds = predict_test(resnet, cfg, device)
 write_submission(ids, preds, path="submission.csv")
+
+# ── Session 4 — Levier : cosine LR scheduler ──────────────────────────────────
+
+# %% ----------------------------------
+# Champion courant : resnet18_fold0, val_acc=0.6406
+# Levier testé : CosineAnnealingLR + 100 epochs (au lieu de lr fixe + 50 epochs)
+# Méthode : fold 0 d'abord, puis décision garder/jeter
+
+cfg_cosine = Config(epochs=100, lr=1e-3, weight_decay=1e-4)
+set_seed(cfg_cosine.seed)
+train_loader, val_loader = build_dataloaders(fold=0, cfg=cfg_cosine, folds_df=folds_df)
+
+resnet_cosine = build_resnet_scratch(
+    depth=18, in_channels=cfg_cosine.in_channels, num_classes=cfg_cosine.num_classes
+).to(device)
+
+history_cosine = fit(
+    resnet_cosine, train_loader, val_loader, cfg_cosine, device,
+    run_name="resnet18_cosine_fold0",
+    patience=20,
+    label_smoothing=0.1,
+    use_cosine=True,
+)
+
+# %% ----------------------------------
+plot_history(history_cosine, save_path="resnet18_cosine_curves.png")
+
+# %% ----------------------------------
+print(f"Champion    val_acc : 0.6406")
+print(f"Cosine      val_acc : {history_cosine['best_val_acc']:.4f}")
+print(f"Delta : {history_cosine['best_val_acc'] - 0.6406:+.4f}")
+
+log_experiment(
+    run_id="resnet18_cosine_fold0",
+    base_champion="resnet18_fold0",
+    levier="CosineAnnealingLR + 100 epochs",
+    cv_acc_mean=history_cosine["best_val_acc"],
+    cv_acc_std=0.0,
+    temps=history_cosine["elapsed"],
+    garde="oui" if history_cosine["best_val_acc"] > 0.6406 else "non",
+)

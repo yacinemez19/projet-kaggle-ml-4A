@@ -248,6 +248,21 @@ retenus** + champion final mono-modèle + tableaux/figures pour le rapport (Q2.4
 > C'est LA session rejouée en boucle (1 levier = 1 run = 1 décision garder/jeter), sur GPU CUDA
 > pour les gros runs, vérifiable sur Mac pour le debug. Toujours comparer sur la **CV k-fold**.
 
+### Journal de décisions (voir `journal.md` pour le détail narratif)
+
+> Référence de comparaison adoptée en pratique : **val_acc fold 0** comme proxy rapide ; un levier
+> gagnant est **confirmé en CV 5-fold** avant d'être sacré champion.
+
+- **Levier #1 — Cosine LR scheduler : GARDÉ.** À budget égal (epoch 50), val_acc 0.7104 vs 0.6406
+  pour le lr fixe (+0.070). **Nouveau champion** = `resnet18_cosine_fold0`.
+- **Diagnostic clé** : à l'arrêt, **train_acc ≈ val_acc** (pas d'overfitting) → régime de
+  **sous-apprentissage**. ⚠️ Cela **révise l'hypothèse par défaut** (« régularisation = levier
+  principal ») : on **réoriente le backlog vers la capacité** (backbone plus profond, résolution
+  plus haute, entraînement plus long) et on **rétrograde** les leviers de régularisation
+  supplémentaire (weight decay↑, dropout↑, DropBlock) tant qu'aucun overfitting n'apparaît.
+- **Prochain run (#4) — test combiné capacité** : ResNet-34 + 512×384 + 150 epochs (entorse
+  assumée au « un levier à la fois » ; à dé-bundler ensuite si gain, pour l'attribution Q2.4).
+
 ---
 
 ## Session 5 — Ensembling, pseudo-labeling & soumission finale

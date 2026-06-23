@@ -45,7 +45,7 @@ class Config:
     num_workers: int = 0
     n_folds: int = 5
     lr: float = 1e-3
-    epochs: int = 50
+    epochs: int = 100
     weight_decay: float = 1e-4
     num_classes: int = 8
     in_channels: int = 1
