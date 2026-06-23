@@ -191,3 +191,47 @@ log_experiment(
     temps=history_cosine["elapsed"],
     garde="oui" if history_cosine["best_val_acc"] > 0.6406 else "non",
 )
+
+# ── Session 4 — Levier : résolution 512×384 ───────────────────────────────────
+
+# %% ----------------------------------
+# Champion courant : resnet18_cosine_fold0, val_acc=0.8330
+# Levier testé : résolution 384×256 → 512×384 (img_h=384, img_w=512), levier seul
+# Hypothèse : + de signal pour les défauts fins (peluches, fils, petits trous).
+# batch_size=32 conservé (= champion cosine) → un seul levier propre (résolution).
+# Fallback batch_size=16 si OOM (4 Go VRAM, ~2.7-3.0 Go attendus à batch 32).
+CHAMPION_VAL_ACC = 0.8330
+
+cfg_hires = Config(img_h=384, img_w=512, batch_size=32, epochs=100, lr=1e-3, weight_decay=1e-4)
+set_seed(cfg_hires.seed)
+train_loader, val_loader = build_dataloaders(fold=0, cfg=cfg_hires, folds_df=folds_df)
+
+resnet_hires = build_resnet_scratch(
+    depth=18, in_channels=cfg_hires.in_channels, num_classes=cfg_hires.num_classes
+).to(device)
+
+history_hires = fit(
+    resnet_hires, train_loader, val_loader, cfg_hires, device,
+    run_name="resnet18_hires_fold0",
+    patience=20,
+    label_smoothing=0.1,
+    use_cosine=True,
+)
+
+# %% ----------------------------------
+plot_history(history_hires, save_path="resnet18_hires_curves.png")
+
+# %% ----------------------------------
+print(f"Champion cosine val_acc : {CHAMPION_VAL_ACC:.4f}")
+print(f"Hi-res 512×384  val_acc : {history_hires['best_val_acc']:.4f}")
+print(f"Delta : {history_hires['best_val_acc'] - CHAMPION_VAL_ACC:+.4f}")
+
+log_experiment(
+    run_id="resnet18_hires_fold0",
+    base_champion="resnet18_cosine_fold0",
+    levier="résolution 512×384 (img_h=384, img_w=512)",
+    cv_acc_mean=history_hires["best_val_acc"],
+    cv_acc_std=0.0,
+    temps=history_hires["elapsed"],
+    garde="oui" if history_hires["best_val_acc"] > CHAMPION_VAL_ACC else "non",
+)

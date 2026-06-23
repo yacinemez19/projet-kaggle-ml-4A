@@ -1,2 +1,5 @@
 run_id,base_champion,levier_testé,cv_acc_mean,cv_acc_std,temps,gardé
 lenet_fold0,—,baseline LeNet (fold 0),0.3975,0.0000,636.4,oui
+resnet18_fold0,lenet_fold0,ResNet-18 from scratch (label_smoothing=0.1),0.6406,0.0000,,oui
+resnet18_cosine_fold0,resnet18_fold0,CosineAnnealingLR + 100 epochs,0.8330,0.0000,,oui
+resnet18_hires_fold0,resnet18_cosine_fold0,"résolution 512×384 (img_h=384, img_w=512)",0.8774,0.0000,2061.2,oui
