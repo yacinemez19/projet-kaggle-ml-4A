@@ -1,3 +1,4 @@
+import contextlib
 import time
 
 import torch
@@ -15,16 +16,25 @@ def train_one_epoch(
     criterion: nn.Module,
     device: torch.device,
     scheduler: torch.optim.lr_scheduler._LRScheduler | None = None,
+    scaler: torch.amp.GradScaler | None = None,
 ) -> tuple[float, float]:
+    use_amp = scaler is not None and scaler.is_enabled()
     model.train()
     total_loss, total_correct, total = 0.0, 0, 0
     for imgs, labels in loader:
         imgs, labels = imgs.to(device), labels.to(device)
         optimizer.zero_grad()
-        logits = model(imgs)
-        loss = criterion(logits, labels)
-        loss.backward()
-        optimizer.step()
+        amp_ctx = torch.autocast(device_type="cuda") if use_amp else contextlib.nullcontext()
+        with amp_ctx:
+            logits = model(imgs)
+            loss = criterion(logits, labels)
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
         total_loss += loss.item() * imgs.size(0)
         total_correct += (logits.argmax(1) == labels).sum().item()
         total += imgs.size(0)
@@ -72,6 +82,9 @@ def fit(
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=cfg.epochs, eta_min=cfg.lr * 1e-2
         )
+    # Mixed precision: auto-enabled on CUDA only (no-op on MPS/CPU).
+    use_amp = device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     early_stop = EarlyStopping(patience=patience)
     ckpt_path = CHECKPOINTS_DIR / f"{run_name}.pt"
     ckpt_state_path = CHECKPOINTS_DIR / f"{run_name}_state.pt"
@@ -87,6 +100,8 @@ def fit(
         optimizer.load_state_dict(state["optimizer_state_dict"])
         if scheduler is not None and state["scheduler_state_dict"] is not None:
             scheduler.load_state_dict(state["scheduler_state_dict"])
+        if use_amp and state.get("scaler_state_dict") is not None:
+            scaler.load_state_dict(state["scaler_state_dict"])
         history = state["history"]
         best_val_acc = state["best_val_acc"]
         start_epoch = state["epoch"] + 1
@@ -96,7 +111,7 @@ def fit(
 
     for epoch in range(start_epoch, cfg.epochs + 1):
         train_loss, train_acc = train_one_epoch(
-            model, train_loader, optimizer, criterion, device, scheduler
+            model, train_loader, optimizer, criterion, device, scheduler, scaler
         )
         val_loss, val_acc = evaluate(model, val_loader, criterion, device)
 
@@ -123,6 +138,7 @@ def fit(
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
+            "scaler_state_dict": scaler.state_dict() if use_amp else None,
             "history": history,
             "best_val_acc": best_val_acc,
         }

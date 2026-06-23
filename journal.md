@@ -20,8 +20,8 @@ augmentation = flips H/V uniquement, optimiseur AdamW, seed 42, from scratch (tr
 |---|-----|--------|--------------|------------------|----------|
 | 1 | `lenet_fold0` | LeNet | baseline | **0.3975** | référence |
 | 2 | `resnet18_fold0` | ResNet-18 from scratch | archi profonde + label_smoothing 0.1 | **0.6406** | gardé (ex-champion) |
-| 3 | `resnet18_cosine_fold0` | ResNet-18 | CosineAnnealingLR (+ epochs) | **0.7104** (arrêté epoch 50) | **GARDÉ — champion** |
-| 4 | `resnet34_hires_long` _(prévu)_ | ResNet-34 | 512×384 + depth 34 + 150 epochs (combiné) | — | à lancer |
+| 3 | `resnet18_cosine_fold0` | ResNet-18 | CosineAnnealingLR + 100 epochs | **0.8330** (ep 83, run→100) | **GARDÉ — champion** |
+| 4 | `resnet18_hires_fold0` _(prévu)_ | ResNet-18 | résolution 512×384 (levier seul) | — | à lancer |
 
 ---
 
@@ -54,45 +54,47 @@ augmentation = flips H/V uniquement, optimiseur AdamW, seed 42, from scratch (tr
 - **But** (levier #1 Session 4) : réduire les oscillations de fin d'entraînement et laisser le
   modèle converger proprement.
 - **Setup** : identique au champion, mais **CosineAnnealingLR** (T_max=cfg.epochs, eta_min=lr·1e-2),
-  patience=20, label_smoothing=0.1. Prévu pour 100 epochs ; **run arrêté manuellement à l'epoch 50**.
-- **Résultat** : **best val_acc = 0.7104** (atteinte à l'epoch 50). Comparaison à **budget égal** :
-  l'ancien champion à lr fixe plafonnait à **0.6406 à l'epoch 50** → **+0.0698** pour le même
-  nombre d'epochs.
-- **Lecture / diagnostic** :
-  - À l'arrêt (epoch 50), **train_acc ≈ val_acc** (0.705 / 0.710), val_acc parfois **≥** train_acc
-    → **pas d'overfitting**, plutôt un régime de **sous-apprentissage** : le modèle a encore de la
-    marge de capacité et la courbe montait toujours.
-  - Le plancher des oscillations remonte nettement vs le run à lr fixe → le scheduler fait son effet.
-- **Conséquence stratégique** : le diagnostic « sous-apprentissage, pas overfitting » **contredit
-  l'hypothèse par défaut du PLAN** (régularisation = levier principal). On réoriente le backlog vers
-  la **capacité / résolution / durée** plutôt que vers plus de régularisation.
-- **Décision** : **GARDÉ → nouveau champion** (val_acc 0.7104). Checkpoint :
+  **100 epochs**, patience=20, label_smoothing=0.1.
+- **Résultat** : **best val_acc = 0.8330** (epoch 83 ; run mené jusqu'à 100). Comparaisons :
+  - vs champion lr fixe (0.6406) → **+0.1924** ;
+  - à budget égal (epoch 50) : 0.7104 vs 0.6406 → +0.070, et l'essentiel du gain (0.71 → 0.83)
+    vient de la **seconde moitié**, quand le lr descend vers ~8e-5.
+- **Lecture / diagnostic (évolution du régime)** :
+  - **Jusqu'à ~epoch 65** : train_acc ≈ val_acc (parfois val ≥ train) → **sous-apprentissage**,
+    le modèle consomme sa marge de capacité (val 0.71 → 0.83).
+  - **À partir de ~epoch 70-75** : un **écart train/val s'ouvre** (ep 80 : train 0.911 / val 0.812,
+    soit +0.10) → **début d'overfitting léger**. Pas encore nocif (val_loss toujours à son minimum,
+    val_acc grappille), mais la fenêtre se referme.
+- **Conséquence stratégique (révisée)** : le diagnostic « sous-apprentissage » n'était vrai qu'**à
+  mi-course**. Le régime a basculé → **la régularisation n'est PAS morte** : elle redevient pertinente
+  dès qu'on augmente capacité/durée. On **n'augmente PAS la profondeur** du modèle pour l'instant
+  (ResNet-34 cumulerait capacité + durée alors que l'overfitting démarre déjà).
+- **Décision** : **GARDÉ → nouveau champion** (val_acc 0.8330). Checkpoint :
   `checkpoints/resnet18_cosine_fold0.pt`.
 - ⚠️ _À faire_ : confirmer ce champion en **CV 5-fold** avant de le figer ; logguer la ligne dans
-  `experiments.csv`. Le run ayant été interrompu, `resnet18_cosine_fold0_state.pt` reste sur disque
-  (à supprimer puisqu'on abandonne les epochs restantes).
+  `experiments.csv`.
 
-## 4 — ResNet-34 + 512×384 + 150 epochs (`resnet34_hires_long`) — PRÉVU
+## 4 — Résolution 512×384 (`resnet18_hires_fold0`) — PRÉVU
 
-- **But** : exploiter la capacité dispo (diagnostic du run #3) en empilant **3 leviers d'un coup** :
-  backbone plus profond, résolution plus haute, entraînement plus long.
-- **Setup prévu** : `build_resnet_scratch(depth=34)`, `Config(img_h=384, img_w=512, epochs=150)`,
-  cosine, label_smoothing=0.1, base = champion `resnet18_cosine_fold0`.
+- **But** : ajouter du **signal** pour les défauts fins (peluches, fils, petits trous) en montant la
+  résolution. Levier **propre et attribuable** (un seul changement vs le champion cosine), choisi à
+  la place de ResNet-34 (cf. run #3 : profondeur écartée pour ne pas aggraver l'overfitting).
+- **Setup prévu** : ResNet-18, `Config(img_h=384, img_w=512, epochs=100)`, cosine, label_smoothing=0.1,
+  base = champion `resnet18_cosine_fold0`. `batch_size` à baisser (16/8) si mémoire MPS limitée.
 - **Résultat** : _à venir._
-- ⚠️ **Caveat méthodologique** : test **combiné** (entorse au « un levier à la fois »). S'il gagne,
-  l'attribution du gain entre profondeur / résolution / durée ne sera pas séparable — à dé-bundler
-  dans un run de suivi si on veut le détail pour le rapport.
 
 ---
 
 ## Leviers restants (backlog Session 4, ordre ROI revu après diagnostic du run #3)
 
-> Priorité réorientée vers la **capacité** (sous-apprentissage constaté), au détriment de la
-> régularisation supplémentaire.
+> Régime constaté : sous-apprentissage en début, **overfitting léger en fin** → la résolution
+> (ajout de signal) prime ; la **profondeur est écartée** ; la régularisation reste en réserve si
+> l'écart train/val grandit.
 
 1. ~~Cosine LR scheduler~~ ✅ **gardé (run #3, champion)**
-2. **Capacité combinée** : ResNet-34 + 512×384 + 150 epochs _(run #4, prévu)_ ⬆️
-3. Label smoothing — balayage 0.0 / 0.1 / 0.2 (comparer sur **val_acc**, pas val_loss)
-4. EMA des poids (quasi gratuit) ⬆️
-5. Flip-TTA à l'inférence (testable sur champion déjà entraîné) ⬆️
-6. Weight decay / dropout / DropBlock — ⬇️ ROI faible tant qu'on n'overfit pas (risque de dégrader)
+2. **Résolution 512×384** _(run #4, prévu)_ — ajoute du signal, attribuable ⬆️
+3. EMA des poids (quasi gratuit) ⬆️
+4. Flip-TTA à l'inférence (testable sur champion déjà entraîné) ⬆️
+5. Label smoothing — balayage 0.0 / 0.1 / 0.2 (comparer sur **val_acc**, pas val_loss)
+6. Régularisation (weight decay / dropout / DropBlock) — réactivée **si** l'overfitting s'aggrave
+7. ❌ Profondeur (ResNet-34) — écartée pour l'instant (overfitting déjà naissant)

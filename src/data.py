@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -54,6 +55,24 @@ def get_val_transform(cfg: Config):
     ])
 
 
+def _loader_kwargs(cfg: Config) -> dict:
+    """DataLoader perf settings, device-aware.
+
+    On CUDA: enable pin_memory and worker processes (the GPU starves with
+    num_workers=0). On MPS/CPU: keep num_workers=0 (MPS requirement) and no pinning.
+    A user-set cfg.num_workers > 0 is always respected.
+    """
+    use_cuda = torch.cuda.is_available()
+    num_workers = cfg.num_workers
+    if use_cuda and num_workers == 0:
+        num_workers = min(8, os.cpu_count() or 0)
+    return {
+        "num_workers": num_workers,
+        "pin_memory": use_cuda,
+        "persistent_workers": num_workers > 0,
+    }
+
+
 def make_folds(cfg: Config) -> pd.DataFrame:
     """Generate Stratified 5-fold split and save to folds.csv (idempotent)."""
     if FOLDS_CSV.exists():
@@ -90,20 +109,9 @@ def build_dataloaders(fold: int, cfg: Config, folds_df: pd.DataFrame = None):
         transform=get_val_transform(cfg),
     )
 
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=cfg.batch_size,
-        shuffle=True,
-        num_workers=cfg.num_workers,
-        pin_memory=False,
-    )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=cfg.batch_size,
-        shuffle=False,
-        num_workers=cfg.num_workers,
-        pin_memory=False,
-    )
+    kwargs = _loader_kwargs(cfg)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, **kwargs)
+    val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False, **kwargs)
     return train_loader, val_loader
 
 
@@ -127,18 +135,7 @@ def stratified_split(cfg: Config, val_size: float = 0.2):
         transform=get_val_transform(cfg),
     )
 
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=cfg.batch_size,
-        shuffle=True,
-        num_workers=cfg.num_workers,
-        pin_memory=False,
-    )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=cfg.batch_size,
-        shuffle=False,
-        num_workers=cfg.num_workers,
-        pin_memory=False,
-    )
+    kwargs = _loader_kwargs(cfg)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True, **kwargs)
+    val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False, **kwargs)
     return train_loader, val_loader

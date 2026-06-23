@@ -253,15 +253,18 @@ retenus** + champion final mono-modèle + tableaux/figures pour le rapport (Q2.4
 > Référence de comparaison adoptée en pratique : **val_acc fold 0** comme proxy rapide ; un levier
 > gagnant est **confirmé en CV 5-fold** avant d'être sacré champion.
 
-- **Levier #1 — Cosine LR scheduler : GARDÉ.** À budget égal (epoch 50), val_acc 0.7104 vs 0.6406
-  pour le lr fixe (+0.070). **Nouveau champion** = `resnet18_cosine_fold0`.
-- **Diagnostic clé** : à l'arrêt, **train_acc ≈ val_acc** (pas d'overfitting) → régime de
-  **sous-apprentissage**. ⚠️ Cela **révise l'hypothèse par défaut** (« régularisation = levier
-  principal ») : on **réoriente le backlog vers la capacité** (backbone plus profond, résolution
-  plus haute, entraînement plus long) et on **rétrograde** les leviers de régularisation
-  supplémentaire (weight decay↑, dropout↑, DropBlock) tant qu'aucun overfitting n'apparaît.
-- **Prochain run (#4) — test combiné capacité** : ResNet-34 + 512×384 + 150 epochs (entorse
-  assumée au « un levier à la fois » ; à dé-bundler ensuite si gain, pour l'attribution Q2.4).
+- **Levier #1 — Cosine LR scheduler (+ 100 epochs) : GARDÉ.** val_acc **0.8330** (ep 83) vs 0.6406
+  pour le lr fixe → **+0.192**. **Nouveau champion** = `resnet18_cosine_fold0`. L'essentiel du gain
+  vient de la seconde moitié (lr → ~8e-5).
+- **Diagnostic clé (régime évolutif)** : **sous-apprentissage jusqu'à ~ep 65** (train ≈ val), puis
+  **overfitting léger à partir de ~ep 70-75** (ep 80 : train 0.91 / val 0.81). ⚠️ L'hypothèse
+  « sous-apprentissage » n'était donc vraie qu'à mi-course → la **régularisation n'est pas morte**,
+  elle redevient pertinente dès qu'on monte la capacité/durée.
+- **Décision capacité** : on **n'augmente PAS la profondeur** (ResNet-34 écarté : cumulerait capacité
+  + durée alors que l'overfitting démarre déjà). On privilégie la **résolution** (ajout de *signal*,
+  pas seulement de capacité).
+- **Prochain run (#4)** : **résolution 512×384 seule** sur ResNet-18 + cosine (levier propre et
+  attribuable, conforme au « un levier à la fois »).
 
 ---
 
