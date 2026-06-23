@@ -57,8 +57,9 @@ def fit(
     device: torch.device,
     run_name: str = "run",
     patience: int = 10,
+    label_smoothing: float = 0.0,
 ) -> dict:
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
     )
